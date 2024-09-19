@@ -90,7 +90,6 @@ type ConsulResolver struct {
 // Resolve performs service discovery against the local Consul agent and returns
 // the address and expected identity of a suitable service instance.
 func (cr *ConsulResolver) Resolve(ctx context.Context) (string, connect.CertURI, error) {
-	fmt.Println("???????????????????????")
 	switch cr.Type {
 	case ConsulResolverTypeService:
 		return cr.resolveService(ctx)
@@ -114,7 +113,6 @@ func (cr *ConsulResolver) resolveService(ctx context.Context) (string, connect.C
 	}
 	// TODO Services are not shuffled by HTTP API, pick one at (pseudo) random.
 	idx := 0
-	fmt.Println("执行了吗？？？？？？？")
 	if len(svcs) > 1 {
 		sort.Slice(svcs, func(i, j int) bool {
 			return svcs[i].Service.Weights.Passing > svcs[j].Service.Weights.Passing

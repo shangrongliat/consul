@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"net"
 	"regexp"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -559,7 +561,6 @@ func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
 	m.RecursionAvailable = (len(cfg.Recursors) > 0)
 
 	var err error
-	fmt.Println("Qtype", req.Question[0].Qtype)
 	switch req.Question[0].Qtype {
 	case dns.TypeSOA:
 		ns, glue := d.getNameserversAndNodeRecord(req.Question[0].Name, cfg, maxRecursionLevelDefault)
@@ -567,18 +568,17 @@ func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
 		m.Ns = append(m.Ns, ns...)
 		m.Extra = append(m.Extra, glue...)
 		m.SetRcode(req, dns.RcodeSuccess)
-
+		fmt.Println("1111111111111111111111111", m)
 	case dns.TypeNS:
 		ns, glue := d.getNameserversAndNodeRecord(req.Question[0].Name, cfg, maxRecursionLevelDefault)
 		m.Answer = ns
 		m.Extra = glue
 		m.SetRcode(req, dns.RcodeSuccess)
-
+		fmt.Println("222222222222222222222222", m)
 	case dns.TypeAXFR:
 		m.SetRcode(req, dns.RcodeNotImplemented)
-
+		fmt.Println("", m)
 	default:
-		fmt.Println("走了default？？？？")
 		err = d.dispatch(resp.RemoteAddr(), req, m, cfg, maxRecursionLevelDefault)
 		rCode := rCodeFromError(err)
 		if rCode == dns.RcodeNameError || errors.Is(err, errNoData) {
@@ -586,9 +586,7 @@ func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
 		}
 		m.SetRcode(req, rCode)
 	}
-
 	setEDNS(req, m, !errors.Is(err, errECSNotGlobal))
-
 	d.trimDNSResponse(cfg, network, req, m)
 
 	if err := resp.WriteMsg(m); err != nil {
@@ -602,7 +600,6 @@ func (d *DNSServer) makeSOARecord(cfg *dnsRequestConfig, questionName string) *d
 	if d.altDomain != "" && strings.HasSuffix(questionName, "."+d.altDomain) {
 		domain = d.altDomain
 	}
-
 	return &dns.SOA{
 		Hdr: dns.RR_Header{
 			Name:   domain,
@@ -1332,6 +1329,7 @@ func trimTCPResponse(req, resp *dns.Msg) (trimmed bool) {
 		index = make(map[string]dns.RR, len(resp.Extra))
 		indexRRs(resp.Extra, index)
 	}
+
 	truncated := false
 
 	// This enforces the given limit on 64k, the max limit for DNS messages
@@ -1352,7 +1350,6 @@ func trimTCPResponse(req, resp *dns.Msg) (trimmed bool) {
 			syncExtra(index, resp)
 		}
 	}
-
 	return truncated
 }
 
@@ -1494,10 +1491,22 @@ func (d *DNSServer) lookupServiceNodes(cfg *dnsRequestConfig, lookup serviceLook
 // handleServiceQuery is used to handle a service query
 func (d *DNSServer) handleServiceQuery(cfg *dnsRequestConfig, lookup serviceLookup, req, resp *dns.Msg) error {
 	out, err := d.lookupServiceNodes(cfg, lookup)
+
 	if err != nil {
 		return fmt.Errorf("rpc request failed: %w", err)
 	}
-
+	// TODO 增加dns解析根据权重信息进行ip返回
+	idx := 0
+	if len(out.Nodes) > 1 {
+		sort.Slice(out.Nodes, func(i, j int) bool {
+			return out.Nodes[i].Service.Weights.Passing > out.Nodes[j].Service.Weights.Passing
+		})
+		if len(out.Nodes) >= 3 {
+			idx = rand.Intn(3)
+		} else {
+			idx = rand.Intn(len(out.Nodes))
+		}
+	}
 	// If we have no nodes, return not found!
 	if len(out.Nodes) == 0 {
 		return errNameNotFound
@@ -1512,9 +1521,9 @@ func (d *DNSServer) handleServiceQuery(cfg *dnsRequestConfig, lookup serviceLook
 	// Add various responses depending on the request
 	qType := req.Question[0].Qtype
 	if qType == dns.TypeSRV {
-		d.addServiceSRVRecordsToMessage(cfg, lookup, out.Nodes, req, resp, ttl, lookup.MaxRecursionLevel)
+		d.addServiceSRVRecordsToMessage(cfg, lookup, []structs.CheckServiceNode{out.Nodes[idx]}, req, resp, ttl, lookup.MaxRecursionLevel)
 	} else {
-		d.addServiceNodeRecordsToMessage(cfg, lookup, out.Nodes, req, resp, ttl, lookup.MaxRecursionLevel)
+		d.addServiceNodeRecordsToMessage(cfg, lookup, []structs.CheckServiceNode{out.Nodes[idx]}, req, resp, ttl, lookup.MaxRecursionLevel)
 	}
 
 	if len(resp.Answer) == 0 {
@@ -1533,6 +1542,7 @@ func ednsSubnetForRequest(req *dns.Msg) *dns.EDNS0_SUBNET {
 
 	for _, o := range edns.Option {
 		if subnet, ok := o.(*dns.EDNS0_SUBNET); ok {
+			fmt.Println("获取到的地址？", subnet.Address)
 			return subnet
 		}
 	}
