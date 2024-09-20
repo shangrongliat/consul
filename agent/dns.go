@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
 	"net"
 	"regexp"
 	"sort"
@@ -400,7 +399,6 @@ func (d *DNSServer) getResponseDomain(questionName string) string {
 
 // handlePtr is used to handle "reverse" DNS queries
 func (d *DNSServer) handlePtr(resp dns.ResponseWriter, req *dns.Msg) {
-	fmt.Println("1111111111111111111111")
 	q := req.Question[0]
 	defer func(s time.Time) {
 		// V1 DNS-style metrics
@@ -521,7 +519,6 @@ func (d *DNSServer) handlePtr(resp dns.ResponseWriter, req *dns.Msg) {
 
 // handleQuery is used to handle DNS queries in the configured domain
 func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
-	fmt.Println("2222222222222222222222222")
 	q := req.Question[0]
 	defer func(s time.Time) {
 		// V1 DNS-style metrics
@@ -568,13 +565,11 @@ func (d *DNSServer) handleQuery(resp dns.ResponseWriter, req *dns.Msg) {
 		m.Ns = append(m.Ns, ns...)
 		m.Extra = append(m.Extra, glue...)
 		m.SetRcode(req, dns.RcodeSuccess)
-		fmt.Println("1111111111111111111111111", m)
 	case dns.TypeNS:
 		ns, glue := d.getNameserversAndNodeRecord(req.Question[0].Name, cfg, maxRecursionLevelDefault)
 		m.Answer = ns
 		m.Extra = glue
 		m.SetRcode(req, dns.RcodeSuccess)
-		fmt.Println("222222222222222222222222", m)
 	case dns.TypeAXFR:
 		m.SetRcode(req, dns.RcodeNotImplemented)
 		fmt.Println("", m)
@@ -779,7 +774,7 @@ func (d *DNSServer) dispatch(remoteAddr net.Addr, req, resp *dns.Msg, cfg *dnsRe
 	var queryKind string
 	var queryParts []string
 	var querySuffixes []string
-
+	//TODO 仔细查看此处代码逻辑，看2个switch的值到底是什么，怎么来的，如何控制
 	done := false
 	for i := len(labels) - 1; i >= 0 && !done; i-- {
 		switch labels[i] {
@@ -1496,16 +1491,15 @@ func (d *DNSServer) handleServiceQuery(cfg *dnsRequestConfig, lookup serviceLook
 		return fmt.Errorf("rpc request failed: %w", err)
 	}
 	// TODO 增加dns解析根据权重信息进行ip返回
-	idx := 0
 	if len(out.Nodes) > 1 {
 		sort.Slice(out.Nodes, func(i, j int) bool {
 			return out.Nodes[i].Service.Weights.Passing > out.Nodes[j].Service.Weights.Passing
 		})
-		if len(out.Nodes) >= 3 {
-			idx = rand.Intn(3)
-		} else {
-			idx = rand.Intn(len(out.Nodes))
-		}
+		//if len(out.Nodes) >= 3 {
+		//	idx = rand.Intn(3)
+		//} else {
+		//	idx = rand.Intn(len(out.Nodes))
+		//}
 	}
 	// If we have no nodes, return not found!
 	if len(out.Nodes) == 0 {
@@ -1513,7 +1507,7 @@ func (d *DNSServer) handleServiceQuery(cfg *dnsRequestConfig, lookup serviceLook
 	}
 
 	// Perform a random shuffle
-	out.Nodes.Shuffle()
+	//out.Nodes.Shuffle()
 
 	// Determine the TTL
 	ttl, _ := cfg.GetTTLForService(lookup.Service)
@@ -1521,9 +1515,9 @@ func (d *DNSServer) handleServiceQuery(cfg *dnsRequestConfig, lookup serviceLook
 	// Add various responses depending on the request
 	qType := req.Question[0].Qtype
 	if qType == dns.TypeSRV {
-		d.addServiceSRVRecordsToMessage(cfg, lookup, []structs.CheckServiceNode{out.Nodes[idx]}, req, resp, ttl, lookup.MaxRecursionLevel)
+		d.addServiceSRVRecordsToMessage(cfg, lookup, []structs.CheckServiceNode{out.Nodes[0]}, req, resp, ttl, lookup.MaxRecursionLevel)
 	} else {
-		d.addServiceNodeRecordsToMessage(cfg, lookup, []structs.CheckServiceNode{out.Nodes[idx]}, req, resp, ttl, lookup.MaxRecursionLevel)
+		d.addServiceNodeRecordsToMessage(cfg, lookup, []structs.CheckServiceNode{out.Nodes[0]}, req, resp, ttl, lookup.MaxRecursionLevel)
 	}
 
 	if len(resp.Answer) == 0 {
@@ -2104,7 +2098,6 @@ func (d *DNSServer) addServiceSRVRecordsToMessage(cfg *dnsRequestConfig, lookup 
 
 // handleRecurse is used to handle recursive DNS queries
 func (d *DNSServer) handleRecurse(resp dns.ResponseWriter, req *dns.Msg) {
-	fmt.Println("3333333333333333333333333333333")
 	cfg := d.getRequestConfig(resp)
 
 	q := req.Question[0]
